@@ -1,0 +1,15 @@
+# Prometheus configuration for scraping metrics from Spring gRPC Server
+
+global:
+  scrape_interval: 15s  # Scrape targets every 15 seconds
+  evaluation_interval: 15s  # Evaluate rules every 15 seconds
+
+scrape_configs:
+  # Scrape Spring Boot Actuator metrics
+  - job_name: 'spring-grpc-server'
+    metrics_path: '/actuator/prometheus'
+    static_configs:
+      - targets: ['grpc-server:8081']
+        labels:
+          application: 'spring-grpc-server'
+          environment: 'docker'

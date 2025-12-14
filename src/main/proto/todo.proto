@@ -1,0 +1,97 @@
+// Protocol Buffer (protobuf) definition for Todo service
+// Proto3 syntax is the latest version, providing simpler and more efficient serialization
+syntax = "proto3";
+
+// Java-specific options for code generation
+option java_multiple_files = true; // Generate separate files for each message/service
+option java_package = "com.example.springgrpcserver.proto"; // Java package for generated code
+option java_outer_classname = "TodoProto"; // Outer class name for metadata
+
+package todo;
+
+// TodoService defines all CRUD operations for managing Todo items
+// gRPC services are defined using the 'service' keyword and contain RPC methods
+service TodoService {
+  // Create a new todo item
+  // rpc defines a remote procedure call with request and response types
+  rpc CreateTodo (CreateTodoRequest) returns (TodoResponse);
+
+  // Retrieve a todo by ID
+  rpc GetTodo (GetTodoRequest) returns (TodoResponse);
+
+  // List all todos with optional filtering
+  rpc ListTodos (ListTodosRequest) returns (ListTodosResponse);
+
+  // Update an existing todo
+  rpc UpdateTodo (UpdateTodoRequest) returns (TodoResponse);
+
+  // Delete a todo by ID
+  rpc DeleteTodo (DeleteTodoRequest) returns (DeleteTodoResponse);
+}
+
+// Message definitions - these are like DTOs (Data Transfer Objects)
+// Messages are structured data that can be serialized/deserialized efficiently
+
+// Todo represents a single todo item
+message Todo {
+  // Field numbers (1, 2, 3...) are used for serialization and must never change
+  // once deployed, as they identify fields in the binary format
+  int64 id = 1;              // Unique identifier
+  string title = 2;          // Todo title (required)
+  string description = 3;    // Detailed description (optional)
+  bool completed = 4;        // Completion status
+  int64 created_at = 5;      // Creation timestamp (Unix epoch in milliseconds)
+  int64 updated_at = 6;      // Last update timestamp (Unix epoch in milliseconds)
+}
+
+// Request message for creating a new todo
+message CreateTodoRequest {
+  string title = 1;          // Required: title of the todo
+  string description = 2;    // Optional: description
+}
+
+// Request message for retrieving a specific todo
+message GetTodoRequest {
+  int64 id = 1;              // Required: ID of the todo to retrieve
+}
+
+// Request message for listing todos
+message ListTodosRequest {
+  // Optional filter: if true, return only completed todos
+  // optional keyword (proto3) allows checking if field was set
+  optional bool completed = 1;
+
+  // Pagination support
+  int32 page_size = 2;       // Number of items per page (default: 10)
+  int32 page_number = 3;     // Page number (0-indexed)
+}
+
+// Response message containing a list of todos
+message ListTodosResponse {
+  repeated Todo todos = 1;   // 'repeated' means this is a list/array
+  int32 total_count = 2;     // Total number of todos matching the filter
+}
+
+// Request message for updating a todo
+message UpdateTodoRequest {
+  int64 id = 1;                    // Required: ID of the todo to update
+  optional string title = 2;       // Optional: new title
+  optional string description = 3; // Optional: new description
+  optional bool completed = 4;     // Optional: new completion status
+}
+
+// Request message for deleting a todo
+message DeleteTodoRequest {
+  int64 id = 1;              // Required: ID of the todo to delete
+}
+
+// Response message for delete operation
+message DeleteTodoResponse {
+  bool success = 1;          // Whether the deletion was successful
+  string message = 2;        // Optional message (e.g., error description)
+}
+
+// Standard response containing a single todo
+message TodoResponse {
+  Todo todo = 1;             // The todo item
+}

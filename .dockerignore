@@ -1,0 +1,19 @@
+# Exclude build artifacts and IDE files from Docker context
+build/
+.gradle/
+.idea/
+*.iml
+*.ipr
+*.iws
+.vscode/
+.DS_Store
+*.log
+
+# Exclude git
+.git/
+.gitignore
+.gitattributes
+
+# Exclude documentation (README will be in image metadata)
+README.md
+docs/

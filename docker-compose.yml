@@ -1,0 +1,58 @@
+# Docker Compose configuration for Spring gRPC Server
+version: '3.8'
+
+services:
+  # Spring gRPC Server
+  grpc-server:
+    build: .
+    ports:
+      - "9090:9090"  # gRPC port
+      - "8081:8081"  # Actuator endpoints
+    environment:
+      # Override database to use file-based H2 (persists data)
+      SPRING_DATASOURCE_URL: jdbc:h2:file:/data/tododb
+      SPRING_JPA_HIBERNATE_DDL_AUTO: update
+    volumes:
+      - grpc-data:/data
+    networks:
+      - grpc-network
+    restart: unless-stopped
+
+  # Optional: Prometheus for metrics collection
+  prometheus:
+    image: prom/prometheus:latest
+    ports:
+      - "9091:9090"
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml
+      - prometheus-data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+    networks:
+      - grpc-network
+    restart: unless-stopped
+
+  # Optional: Grafana for metrics visualization
+  grafana:
+    image: grafana/grafana:latest
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+    volumes:
+      - grafana-data:/var/lib/grafana
+    networks:
+      - grpc-network
+    depends_on:
+      - prometheus
+    restart: unless-stopped
+
+volumes:
+  grpc-data:
+  prometheus-data:
+  grafana-data:
+
+networks:
+  grpc-network:
+    driver: bridge
