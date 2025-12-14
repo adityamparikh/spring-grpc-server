@@ -31,7 +31,6 @@ dependencies {
 
     // JPA and Database - for persistent Todo storage
     implementation("org.springframework.boot:spring-boot-starter-data-jpa")
-    implementation("org.springframework.boot:spring-boot-starter-web")
     runtimeOnly("com.h2database:h2")
 
     // Validation - for request validation
@@ -44,6 +43,7 @@ dependencies {
     // Testing
     testImplementation("org.springframework.boot:spring-boot-starter-test")
     testImplementation("org.springframework.grpc:spring-grpc-test")
+    testImplementation("org.awaitility:awaitility:4.2.0")
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")
 }
 
