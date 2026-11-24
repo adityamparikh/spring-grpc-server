@@ -16,7 +16,9 @@ COPY src src
 RUN gradle build --no-daemon -x test
 
 # Stage 2: Runtime image
-FROM eclipse-temurin:25-jre-alpine
+# Pinned to the first Temurin 25 build with the fix for CVE-2026-114938 (Java4Shell).
+# Do not go below 25.0.5.1; bump deliberately when newer patch releases ship.
+FROM eclipse-temurin:25.0.5.1_2-jre-alpine
 WORKDIR /app
 
 # Create a non-root user for security
