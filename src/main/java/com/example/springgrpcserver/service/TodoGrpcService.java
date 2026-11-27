@@ -262,7 +262,10 @@ public class TodoGrpcService extends TodoServiceGrpc.TodoServiceImplBase {
                 entity.setCompleted(request.getCompleted());
             }
 
-            TodoEntity updated = todoRepository.save(entity);
+            // Flush before responding: @PreUpdate (updatedAt) and Bean Validation only run on
+            // flush, so a plain save() would answer with a stale timestamp and report success
+            // for a change that later fails at commit.
+            TodoEntity updated = todoRepository.saveAndFlush(entity);
 
             TodoResponse response = TodoResponse.newBuilder()
                 .setTodo(todoMapper.toProto(updated))
