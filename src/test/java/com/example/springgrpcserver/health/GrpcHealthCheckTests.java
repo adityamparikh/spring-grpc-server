@@ -10,6 +10,15 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Import;
 
+import java.time.Duration;
+import java.util.Collections;
+import java.util.List;
+import java.util.concurrent.Callable;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
+
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
@@ -162,14 +171,15 @@ class GrpcHealthCheckTests {
     void testHealthCheckPerformance() {
         HealthCheckRequest request = HealthCheckRequest.newBuilder().build();
 
-        long startTime = System.currentTimeMillis();
+        // nanoTime is monotonic; currentTimeMillis can jump with wall-clock adjustments
+        long startTime = System.nanoTime();
         HealthCheckResponse response = healthStub.check(request);
-        long duration = System.currentTimeMillis() - startTime;
+        Duration duration = Duration.ofNanos(System.nanoTime() - startTime);
 
         assertThat(response.getStatus()).isNotNull();
         assertThat(duration)
                 .as("Health check should respond in less than 100ms")
-                .isLessThan(100L);
+                .isLessThan(Duration.ofMillis(100));
     }
 
     /**
@@ -189,26 +199,25 @@ class GrpcHealthCheckTests {
      * All checking health concurrently every few seconds.
      */
     @Test
-    void testConcurrentHealthChecks() throws InterruptedException {
+    void testConcurrentHealthChecks() throws Exception {
         int concurrentRequests = 10;
-        Thread[] threads = new Thread[concurrentRequests];
+        Callable<HealthCheckResponse.ServingStatus> check =
+                () -> healthStub.check(HealthCheckRequest.newBuilder().build()).getStatus();
 
-        for (int i = 0; i < concurrentRequests; i++) {
-            threads[i] = new Thread(() -> {
-                HealthCheckRequest request = HealthCheckRequest.newBuilder().build();
-                HealthCheckResponse response = healthStub.check(request);
-                assertThat(response.getStatus())
+        try (ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor()) {
+            // invokeAll with a timeout cancels any check still running at the deadline
+            List<Future<HealthCheckResponse.ServingStatus>> results =
+                    executor.invokeAll(Collections.nCopies(concurrentRequests, check), 5, TimeUnit.SECONDS);
+
+            // Assert on the test thread: an assertion thrown inside a worker thread
+            // would only be logged and could never fail the test
+            for (Future<HealthCheckResponse.ServingStatus> result : results) {
+                assertThat(result.state())
+                        .as("Health check should complete within timeout")
+                        .isEqualTo(Future.State.SUCCESS);
+                assertThat(result.resultNow())
                         .isEqualTo(HealthCheckResponse.ServingStatus.SERVING);
-            });
-            threads[i].start();
-        }
-
-        // Wait for all threads to complete
-        for (Thread thread : threads) {
-            thread.join(5000); // 5 second timeout per thread
-            assertThat(thread.isAlive())
-                    .as("Health check thread should complete within timeout")
-                    .isFalse();
+            }
         }
     }
 
@@ -220,15 +229,21 @@ class GrpcHealthCheckTests {
 @Configuration
 class HealthGrpcTestConfiguration {
 
-    @Bean
-    public HealthGrpc.HealthBlockingStub healthStub(
+    /**
+     * Declared as a bean so Spring shuts the channel down with the context instead of leaking it.
+     */
+    @Bean(destroyMethod = "shutdownNow")
+    public io.grpc.ManagedChannel healthChannel(
             @org.springframework.beans.factory.annotation.Value("${spring.grpc.server.port:9090}") int grpcPort) {
-
-        io.grpc.ManagedChannel channel = io.grpc.ManagedChannelBuilder
+        return io.grpc.ManagedChannelBuilder
                 .forAddress("localhost", grpcPort)
                 .usePlaintext()
                 .build();
+    }
 
-        return HealthGrpc.newBlockingStub(channel);
+    @Bean
+    public HealthGrpc.HealthBlockingStub healthStub(
+            @org.springframework.beans.factory.annotation.Qualifier("healthChannel") io.grpc.ManagedChannel healthChannel) {
+        return HealthGrpc.newBlockingStub(healthChannel);
     }
 }

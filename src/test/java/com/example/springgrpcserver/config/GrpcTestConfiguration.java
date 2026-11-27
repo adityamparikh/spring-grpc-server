@@ -3,6 +3,7 @@ package com.example.springgrpcserver.config;
 import com.example.springgrpcserver.proto.TodoServiceGrpc;
 import io.grpc.ManagedChannel;
 import io.grpc.ManagedChannelBuilder;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.context.annotation.Bean;
@@ -17,22 +18,27 @@ import org.springframework.context.annotation.Bean;
 public class GrpcTestConfiguration {
 
     /**
-     * Creates a blocking stub for TodoService.
-     *
-     * The stub connects to the local gRPC server on the configured port.
+     * Creates a channel to the local gRPC server on the configured port.
      * For testing, we use plaintext (no TLS) for simplicity.
+     *
+     * Declared as a bean so Spring shuts it down with the context; otherwise every
+     * context restart (see @DirtiesContext in the tests) leaks a channel.
      */
-    @Bean
-    public TodoServiceGrpc.TodoServiceBlockingStub todoServiceStub(
+    @Bean(destroyMethod = "shutdownNow")
+    public ManagedChannel todoServiceChannel(
             @Value("${spring.grpc.server.port:9090}") int grpcPort) {
-
-        // Create a channel to localhost on the gRPC server port
-        ManagedChannel channel = ManagedChannelBuilder
+        return ManagedChannelBuilder
             .forAddress("localhost", grpcPort)
             .usePlaintext() // No TLS for testing
             .build();
+    }
 
-        // Create and return the blocking stub
-        return TodoServiceGrpc.newBlockingStub(channel);
+    /**
+     * Creates a blocking stub for TodoService over the test channel.
+     */
+    @Bean
+    public TodoServiceGrpc.TodoServiceBlockingStub todoServiceStub(
+            @Qualifier("todoServiceChannel") ManagedChannel todoServiceChannel) {
+        return TodoServiceGrpc.newBlockingStub(todoServiceChannel);
     }
 }

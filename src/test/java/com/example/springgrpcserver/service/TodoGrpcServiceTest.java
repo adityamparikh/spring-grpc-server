@@ -310,6 +310,64 @@ class TodoGrpcServiceTest {
     }
 
     /**
+     * Test: The update response carries the timestamp that was actually persisted.
+     *
+     * The {@code @PreUpdate} callback only runs when Hibernate flushes, so the response
+     * must be built after the flush, not before the transaction commits.
+     */
+    @Test
+    void testUpdateTodo_ResponseReflectsPersistedUpdatedAt() throws InterruptedException {
+        // Arrange: Create a todo
+        Todo created = todoServiceStub.createTodo(
+            CreateTodoRequest.newBuilder().setTitle("Original").build()
+        ).getTodo();
+
+        // Make sure the update happens in a later millisecond than the create
+        Thread.sleep(5);
+
+        // Act: Update the todo, then read it back
+        Todo updated = todoServiceStub.updateTodo(
+            UpdateTodoRequest.newBuilder().setId(created.getId()).setCompleted(true).build()
+        ).getTodo();
+        Todo stored = todoServiceStub.getTodo(
+            GetTodoRequest.newBuilder().setId(created.getId()).build()
+        ).getTodo();
+
+        // Assert: The response timestamp moved forward and matches what was stored
+        assertThat(updated.getUpdatedAt()).isGreaterThan(created.getUpdatedAt());
+        assertThat(updated.getUpdatedAt()).isEqualTo(stored.getUpdatedAt());
+    }
+
+    /**
+     * Test: An update the database rejects is reported as an error, not as success.
+     *
+     * The title column allows at most 255 characters. The failure only surfaces when
+     * the change is flushed, which must happen before the response is sent.
+     */
+    @Test
+    void testUpdateTodo_TitleTooLong_FailsAndLeavesTodoUnchanged() {
+        // Arrange: Create a todo
+        long todoId = todoServiceStub.createTodo(
+            CreateTodoRequest.newBuilder().setTitle("Original").build()
+        ).getTodo().getId();
+
+        // Act & Assert: The over-long title is rejected
+        UpdateTodoRequest request = UpdateTodoRequest.newBuilder()
+            .setId(todoId)
+            .setTitle("x".repeat(256))
+            .build();
+
+        assertThatThrownBy(() -> todoServiceStub.updateTodo(request))
+            .isInstanceOf(StatusRuntimeException.class);
+
+        // Assert: The stored todo is unchanged
+        Todo stored = todoServiceStub.getTodo(
+            GetTodoRequest.newBuilder().setId(todoId).build()
+        ).getTodo();
+        assertThat(stored.getTitle()).isEqualTo("Original");
+    }
+
+    /**
      * Test: Delete todo successfully.
      */
     @Test

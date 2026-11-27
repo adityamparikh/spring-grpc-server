@@ -13,6 +13,8 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.grpc.server.service.GrpcService;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.interceptor.TransactionAspectSupport;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 import java.util.List;
 import java.util.Optional;
@@ -107,6 +109,7 @@ public class TodoGrpcService extends TodoServiceGrpc.TodoServiceImplBase {
 
         } catch (Exception e) {
             logger.error("Error creating todo", e);
+            rollbackCurrentTransaction();
             // Send internal error status
             responseObserver.onError(
                 Status.INTERNAL
@@ -148,6 +151,7 @@ public class TodoGrpcService extends TodoServiceGrpc.TodoServiceImplBase {
 
         } catch (Exception e) {
             logger.error("Error fetching todo", e);
+            rollbackCurrentTransaction();
             responseObserver.onError(
                 Status.INTERNAL
                     .withDescription("Failed to fetch todo: " + e.getMessage())
@@ -207,6 +211,7 @@ public class TodoGrpcService extends TodoServiceGrpc.TodoServiceImplBase {
 
         } catch (Exception e) {
             logger.error("Error listing todos", e);
+            rollbackCurrentTransaction();
             responseObserver.onError(
                 Status.INTERNAL
                     .withDescription("Failed to list todos: " + e.getMessage())
@@ -262,7 +267,10 @@ public class TodoGrpcService extends TodoServiceGrpc.TodoServiceImplBase {
                 entity.setCompleted(request.getCompleted());
             }
 
-            TodoEntity updated = todoRepository.save(entity);
+            // Flush before responding: @PreUpdate (updatedAt) and Bean Validation only run on
+            // flush, so a plain save() would answer with a stale timestamp and report success
+            // for a change that later fails at commit.
+            TodoEntity updated = todoRepository.saveAndFlush(entity);
 
             TodoResponse response = TodoResponse.newBuilder()
                 .setTodo(todoMapper.toProto(updated))
@@ -275,6 +283,7 @@ public class TodoGrpcService extends TodoServiceGrpc.TodoServiceImplBase {
 
         } catch (Exception e) {
             logger.error("Error updating todo", e);
+            rollbackCurrentTransaction();
             responseObserver.onError(
                 Status.INTERNAL
                     .withDescription("Failed to update todo: " + e.getMessage())
@@ -317,11 +326,26 @@ public class TodoGrpcService extends TodoServiceGrpc.TodoServiceImplBase {
 
         } catch (Exception e) {
             logger.error("Error deleting todo", e);
+            rollbackCurrentTransaction();
             responseObserver.onError(
                 Status.INTERNAL
                     .withDescription("Failed to delete todo: " + e.getMessage())
                     .asRuntimeException()
             );
+        }
+    }
+
+    /**
+     * Marks the current transaction rollback-only after an error that is handled here
+     * (reported via {@code onError}) instead of propagated to the transaction proxy.
+     * <p>
+     * Without this, a swallowed exception lets the transaction commit partial work, or,
+     * when a repository call already marked it rollback-only, makes the commit throw an
+     * {@code UnexpectedRollbackException} after the client has received its error.
+     */
+    private static void rollbackCurrentTransaction() {
+        if (TransactionSynchronizationManager.isActualTransactionActive()) {
+            TransactionAspectSupport.currentTransactionStatus().setRollbackOnly();
         }
     }
 }

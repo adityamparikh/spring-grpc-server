@@ -33,7 +33,7 @@ public class GrpcNativeHints {
      * 3. Native image compilation eliminates unused code, which can break
      *    reflection-based frameworks unless we provide hints
      */
-    static class GrpcRuntimeHints implements RuntimeHintsRegistrar {
+    static final class GrpcRuntimeHints implements RuntimeHintsRegistrar {
 
         @Override
         public void registerHints(RuntimeHints hints, ClassLoader classLoader) {
@@ -98,11 +98,7 @@ public class GrpcNativeHints {
 
             // Register service descriptor for reflection
             // This is needed for server reflection and service discovery
-            try {
-                hints.resources().registerPattern("todo.proto");
-            } catch (Exception e) {
-                // Proto file resources are handled by protobuf plugin
-            }
+            hints.resources().registerPattern("todo.proto");
         }
     }
 }
